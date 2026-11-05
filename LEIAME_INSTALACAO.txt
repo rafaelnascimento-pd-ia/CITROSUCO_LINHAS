@@ -1,0 +1,76 @@
+==============================================================================
+ GUIA DE INSTALAÇÃO E USO EM OUTRO COMPUTADOR - PROJETO IA LINHAS CITROSUCO
+==============================================================================
+
+Este pacote contém o projeto completo de IA da Citrosuco para detecção,
+treinamento, inferência e vetorização de linhas de plantio e entrelinhas curvas:
+
+- Código-fonte completo (src, scripts, app.py, main.py)
+- Modelos treinados (.pth em models/)
+- Datasets brutos das fazendas (ortofotos e shapefiles em data_set/)
+- Patches processados de treino/validação/teste (em data/)
+- Resultados e amostras de inferência (em inferencia/)
+- Interface Web para visualização gráfica (em static/)
+
+------------------------------------------------------------------------------
+ 1. INSTALAÇÃO RÁPIDA (1 CLIQUE)
+------------------------------------------------------------------------------
+1. Descompacte o arquivo ZIP em qualquer pasta do computador (ex: C:\Projetos\projeto_ia_linhas).
+2. Dê um duplo-clique no arquivo:
+   --> 1_INSTALAR_DEPENDENCIAS.bat
+
+O instalador vai automaticamente:
+- Identificar o Python do sistema (oficial, py ou anaconda)
+- Criar a pasta do ambiente virtual isolado (.venv)
+- Atualizar o pip
+- Instalar o PyTorch compilado com suporte a GPU NVIDIA (CUDA 12.1)
+- Instalar todas as bibliotecas geoespaciais (rasterio, geopandas, shapely, fiona) e IA (smp, albumentations, opencv)
+- Testar e confirmar se a GPU foi detectada com sucesso.
+
+------------------------------------------------------------------------------
+ 2. TESTE DO AMBIENTE
+------------------------------------------------------------------------------
+Dê um duplo-clique em:
+--> 3_TESTAR_AMBIENTE.bat
+Ele confirmará na tela se a GPU e as bibliotecas estão funcionando perfeitamente.
+
+------------------------------------------------------------------------------
+ 3. COMO EXECUTAR
+------------------------------------------------------------------------------
+
+A) Interface Web com Painel Visual (Recomendado):
+   --> Dê um duplo-clique em: 2_INICIAR_INTERFACE_WEB.bat
+   (O navegador abrirá automaticamente em: http://localhost:5000)
+
+B) Treinar com Todos os Datasets das Fazendas (GPU ao vivo):
+   .venv\Scripts\python.exe main.py train_multi --config configs/train_all_datasets.yaml
+
+C) Treinar com 1 Dataset Único:
+   .venv\Scripts\python.exe main.py train --config configs/train.yaml
+
+D) Rodar Inferência em Lote:
+   .venv\Scripts\python.exe main.py infer_batch --config configs/infer_batch.yaml
+
+E) Rodar Pós-Processamento Isolado de Entrelinhas Curvas:
+   .venv\Scripts\python.exe scripts\calcular_entrelinhas_curvas\calcular_entrelinhas_curvas_robusto.py
+
+------------------------------------------------------------------------------
+ 4. ESTRUTURA DO PACOTE
+------------------------------------------------------------------------------
+├── 1_INSTALAR_DEPENDENCIAS.bat          -> Instalador automático no Windows
+├── 2_INICIAR_INTERFACE_WEB.bat          -> Atalho 1-clique para abrir a Web UI
+├── 3_TESTAR_AMBIENTE.bat                -> Atalho 1-clique para testar GPU e libs
+├── COMO_INSTALAR_EM_OUTRO_COMPUTADOR.md -> Guia completo e detalhado
+├── LEIAME_INSTALACAO.txt                -> Este resumo
+├── app.py                               -> Servidor Flask e API da Interface Web
+├── main.py                              -> CLI central para disparo de comandos
+├── requirements.txt                     -> Lista completa de bibliotecas
+├── configs/                             -> Arquivos YAML de configuração
+├── models/                              -> Checkpoints e pesos dos modelos (.pth)
+├── data_set/                            -> Ortofotos TIF e Shapefiles brutos das fazendas
+├── data/                                -> Patches fatiados para treino/val
+├── inferencia/                          -> Testes e resultados de inferência
+├── src/                                 -> Módulos centrais (preprocess, train, model, etc.)
+├── scripts/                             -> Scripts de entrelinhas curvas e utilitários
+└── static/                              -> Front-end da interface Web
+==============================================================================

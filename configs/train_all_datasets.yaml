@@ -1,0 +1,69 @@
+# ==============================================================================
+# CONFIGURAÇÃO DE TREINAMENTO MULTI-DATASET (TODOS OS 9 DATASETS)
+# Uso: python main.py train_multi --config configs/train_all_datasets.yaml
+# ==============================================================================
+
+datasets:
+  - gpkg_path: data_set/63995/63995.gpkg
+    lines_path: data_set/63995/VETORES/LINHAS.geojson
+    talhao_path: data_set/63995/VETORES/TALHOES.geojson
+    buffer_size: 1.5
+
+  - gpkg_path: data_set/63996/63996.gpkg
+    lines_path: data_set/63996/VETORES/LINHAS.geojson
+    talhao_path: data_set/63996/VETORES/TALHOES.geojson
+    buffer_size: 1.5
+
+  - gpkg_path: data_set/64000/64000.gpkg
+    lines_path: data_set/64000/VETORES/LINHAS.geojson
+    talhao_path: data_set/64000/VETORES/TALHOES.geojson
+    buffer_size: 1.5
+
+  - gpkg_path: data_set/64001/64001.gpkg
+    lines_path: data_set/64001/VETORES/LINHAS.geojson
+    talhao_path: data_set/64001/VETORES/TALHOES.geojson
+    buffer_size: 1.5
+
+  - gpkg_path: data_set/64003/64003.gpkg
+    lines_path: data_set/64003/VETORES/LINHAS.geojson
+    talhao_path: data_set/64003/VETORES/TALHOES.geojson
+    buffer_size: 1.5
+
+  - gpkg_path: data_set/76979/76979.gpkg
+    lines_path: data_set/76979/VETORES/LINHAS.geojson
+    talhao_path: data_set/76979/VETORES/TALHOES.geojson
+    buffer_size: 1.2
+
+  - gpkg_path: data_set/76983/76983.gpkg
+    lines_path: data_set/76983/VETORES/LINHAS.geojson
+    talhao_path: data_set/76983/VETORES/TALHOES.geojson
+    buffer_size: 1.2
+
+  - gpkg_path: data_set/83741/83741.gpkg
+    lines_path: data_set/83741/VETORES/LINHAS.geojson
+    talhao_path: data_set/83741/VETORES/83741.geojson
+    buffer_size: 1.2
+
+  - gpkg_path: data_set/84650/84650.gpkg
+    lines_path: data_set/84650/VETORES/LINHAS_84650.geojson
+    talhao_path: data_set/84650/VETORES/TALHAO_84650.geojson
+    buffer_size: 1.4
+
+# Parâmetros de Pré-Processamento
+data_dir: data
+models_dir: models
+buffer_size: 1.3
+tile_size: 256
+stride: 128
+val_size: 0.15   # 15% para Validação (salvar best_model)
+test_size: 0.05  # 5% para Teste Cego (avaliação final) -> Restante 80% para Treino
+skip_preprocess: false # Gera os tiles de treino/val/teste a partir dos 9 ortomosaicos
+
+# Configuração do Treinamento
+encoder_name: resnet18
+epochs: 60
+batch_size: 16
+lr: 0.0001
+early_stopping_patience: 20  # Para automaticamente se ficar 20 épocas sem ganho significativo
+min_delta: 0.001             # Ganho mínimo necessário no Val IoU (+0.1%)
+

@@ -1,0 +1,22 @@
+# Inferência - 68094 (tiros retos)
+# python main.py infer_post --config configs/infer_68094_tiro_reto.yaml
+
+gpkg_path: inferencia/68094/68094.gpkg
+talhao_path: inferencia/68094/shape.geojson
+
+checkpoint_path: models/best_model_20260903_184958_9orthos.pth
+
+models_dir: models
+output_dir: inferencia/68094/outputs
+
+tile_size: 256
+stride: 128
+threshold: 0.5
+min_area_m2: 10.0
+close_size: 5
+open_size: 3
+
+skip_postprocess: false
+export_as_lines: true
+profile: tiro_reto
+calc_entrelinhas: false

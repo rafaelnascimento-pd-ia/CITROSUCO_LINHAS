@@ -1,0 +1,15 @@
+# ==============================================================================
+# COMANDOS PARA PREPARAÇÃO DE DATASET E TREINAMENTO DE MODELO
+# ==============================================================================
+
+# IMPORTANTE: Use o Python do ambiente virtual (.venv) ou ative-o antes de rodar:
+# Opção A (Direto com o executável da venv - Recomendado no Windows):
+.venv\Scripts\python.exe main.py train_multi --config configs/train_all_datasets.yaml
+
+# Opção B (Ativando a venv primeiro):
+# .venv\Scripts\Activate.ps1
+# python main.py train_multi --config configs/train_all_datasets.yaml
+
+# ------------------------------------------------------------------------------
+# TREINAR COM 1 DATASET ESPECÍFICO (Exemplo: 63996 ou outro):
+.venv\Scripts\python.exe main.py train --config configs/train.yaml

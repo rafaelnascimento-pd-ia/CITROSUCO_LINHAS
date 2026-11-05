@@ -1,0 +1,48 @@
+# Inferência - 86508 (Misto - Auto Detect com Vetorização Avançada v2)
+# Execução: .venv\Scripts\python.exe main.py infer_post --config configs/infer_86508_misto.yaml
+
+gpkg_path: inferencia/86508/86508.gpkg
+talhao_path: inferencia/86508/shape (1).geojson
+
+checkpoint_path: models/best_model_20260903_184958_9orthos.pth
+
+models_dir: models
+output_dir: inferencia/86508/outputs
+
+tile_size: 256
+stride: 128
+batch_size: 4
+min_tile_coverage: 0.0
+
+threshold: 0.35
+min_area_m2: 5.0
+close_size: 7
+open_size: 2
+
+skip_postprocess: false
+export_as_lines: true
+profile: auto
+calc_entrelinhas: false
+
+# Parâmetros Avançados de Vetorização (Híbrido com Fallbacks)
+# centerline_method:
+#   'skeleton_hybrid' (Recomendado: Poda v2 + centralização Gaussiana legacy estável sem corte em concavidades)
+#   'skeleton_legacy' (Método legado puro 100% fiel às linhas marrons)
+#   'skeleton_v2'     (Spline com restrição estrita dentro do polígono)
+centerline_method: skeleton_hybrid
+merge_method: spatial_cost          # 'spatial_cost' ou 'greedy_legacy'
+dedup_method: overlap_parallelism   # 'overlap_parallelism' ou 'distance_legacy'
+resample_step_m: 1.0
+min_row_spacing_m: 4.0
+max_row_spacing_m: 8.5
+
+# Melhorias Complementares de Pós-Implementação
+prob_refinement_enabled: false      # true para refinar centroides usando cristas do prob_map
+prob_refinement_weight: 0.5         # peso de atração ao pico de probabilidade [0..1]
+prob_search_radius_m: 1.5           # raio de busca perpendicular (metros)
+prob_max_shift_m: 0.75              # deslocamento máximo tolerado do traçado original
+curvature_control_enabled: false    # true para suavizar zigue-zagues excessivos
+max_curvature: null                 # limite de curvatura (rad/m), ex: 0.15 ou null para auto
+corridor_validation_enabled: false  # true para filtrar linhas sem vizinhos plausíveis
+topology_validation_enabled: true   # true para validação topológica final (interseções e duplicidades)
+write_run_metadata_file: true       # exporta outputs/run_metadata.json com estatísticas da execução

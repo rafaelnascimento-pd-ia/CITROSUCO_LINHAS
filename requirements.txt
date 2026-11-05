@@ -1,0 +1,21 @@
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch
+torchvision
+segmentation-models-pytorch
+rasterio
+geopandas
+shapely
+fiona
+opencv-python-headless
+flask
+numpy
+pandas
+matplotlib
+albumentations
+scikit-image
+scikit-learn
+scipy
+pyproj
+rtree
+pyyaml
+tqdm

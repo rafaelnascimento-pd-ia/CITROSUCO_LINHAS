@@ -1,0 +1,26 @@
+# Configuração para inferência em lote (infer_batch) com cálculo automático de ângulo
+# Use: python main.py infer_batch --config configs/infer_batch_auto_angle.yaml
+
+checkpoint_path: models/best_model_20260531_180150.pth
+
+# Parâmetros padrão gerais (podem ser sobrescritos por tarefa)
+tile_size: 256
+stride: 64
+threshold: 0.40
+min_area_m2: 8.0
+close_size: 12
+open_size: 3
+skip_postprocess: false
+export_as_lines: true
+min_row_spacing_m: 4.0
+
+runs:
+  - gpkg_path: inferencia/76979/76979.gpkg
+    talhao_path: inferencia/76979/791.geojson
+    output_dir: inferencia/76979_auto
+    # Sem path_linhas — o ângulo dominante será calculado de forma 100% automática
+
+  - gpkg_path: inferencia/76983/76983.gpkg
+    talhao_path: inferencia/76983/TALHOES.geojson
+    output_dir: inferencia/76983_auto
+    # Sem path_linhas — o ângulo dominante será calculado de forma 100% automática

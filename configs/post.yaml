@@ -1,0 +1,13 @@
+# Configuração para fluxo de pós-processamento somente
+# Use: python main.py post_only --config configs/post.yaml
+
+input_raster: data/outputs/predicao_linhas.tif
+talhao_path: data/synthetic/talhao.geojson
+
+output_dir: data
+
+threshold: 0.5
+min_area_m2: 10.0
+close_size: 5
+open_size: 3
+skip_postprocess: false

@@ -1,0 +1,21 @@
+# Configuração para fluxo de inferência + pós-processamento
+# Use: python main.py infer_post --config configs/infer.yaml
+
+gpkg_path: data_set/68094/68094.gpkg
+talhao_path: data_set/68094/roi_68094_1_4_buffer.geojson
+path_linhas: data_set/68094/68094_LINHAS.geojson
+
+
+data_dir: data
+output_dir: inferencia_teste_rafael_1/68094
+
+tile_size: 256
+stride: 64
+
+threshold: 0.40
+min_area_m2: 8.0
+close_size: 12
+open_size: 3
+skip_postprocess: false
+export_as_lines: true
+min_row_spacing_m: 4.0

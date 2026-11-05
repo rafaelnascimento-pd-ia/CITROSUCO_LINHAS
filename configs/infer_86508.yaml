@@ -1,0 +1,22 @@
+# Inferência - 86508
+# Execução: .venv\Scripts\python.exe main.py infer_post --config configs/infer_86508.yaml
+
+gpkg_path: inferencia/86508/86508.gpkg
+talhao_path: inferencia/86508/shape (1).geojson
+
+checkpoint_path: models/best_model_20260903_184958_9orthos.pth
+
+models_dir: models
+output_dir: inferencia/86508/outputs
+
+tile_size: 256
+stride: 128
+threshold: 0.40
+min_area_m2: 5.0
+close_size: 7
+open_size: 2
+
+skip_postprocess: false
+export_as_lines: true
+profile: tiro_reto  # use "curva" se o talhão for em curvas de nível
+calc_entrelinhas: false

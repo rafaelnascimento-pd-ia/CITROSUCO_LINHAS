@@ -1,0 +1,22 @@
+# Inferência - 68093 (curvas)
+# python main.py infer_post --config configs/infer_68093_curvas.yaml
+
+gpkg_path: inferencia/68093/68093.gpkg
+talhao_path: inferencia/68093/68093.geojson
+
+checkpoint_path: models/best_model_20260901_203143_9orthos.pth
+
+models_dir: models
+output_dir: inferencia/68093/outputs
+
+tile_size: 256
+stride: 128
+threshold: 0.35
+min_area_m2: 5.0
+close_size: 7
+open_size: 2
+
+skip_postprocess: false
+export_as_lines: true
+profile: curva
+calc_entrelinhas: false

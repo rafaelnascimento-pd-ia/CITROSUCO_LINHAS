@@ -1,0 +1,26 @@
+# Configuração para inferência em lote (infer_batch) COM pós-processamento e sentido de linhas guias
+# Use: python main.py infer_batch --config configs/infer_batch.yaml
+
+checkpoint_path: models/best_model_20260531_180150.pth
+
+# Parâmetros padrão gerais para inferência e pós-processamento completo
+tile_size: 256
+stride: 64
+threshold: 0.40
+min_area_m2: 8.0
+close_size: 12
+open_size: 3
+skip_postprocess: false
+export_as_lines: true
+min_row_spacing_m: 4.0
+
+runs:
+  - gpkg_path: inferencia/76979/76979.gpkg
+    talhao_path: inferencia/76979/79.geojson
+    path_linhas: inferencia/76979/sentido_linhas_teste.geojson
+    output_dir: inferencia/76979_guided
+
+  - gpkg_path: inferencia/76983/76983.gpkg
+    talhao_path: inferencia/76983/TALHOES.geojson
+    path_linhas: inferencia/76983/LINHAS.geojson
+    output_dir: inferencia/76983_guided

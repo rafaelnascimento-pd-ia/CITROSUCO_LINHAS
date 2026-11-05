@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CitrosRows AI — Interface Local</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">🍊</div>
+                <div>
+                    <h2>CitrosRows AI</h2>
+                    <p style="font-size: 12px; color: var(--text-muted);">Interface limpa e guiada</p>
+                </div>
+            </div>
+            <nav class="nav-menu" id="step-menu">
+                <button class="nav-item active" data-step="step-mode">1. Modo</button>
+                <button class="nav-item" data-step="step-data">2. Dados</button>
+                <button class="nav-item" data-step="step-params">3. Parâmetros</button>
+                <button class="nav-item" data-step="step-execute">4. Executar</button>
+                <button class="nav-item" data-step="step-result">5. Resultado</button>
+            </nav>
+            <div class="cuda-status-panel">
+                <div class="cuda-header">
+                    <span class="status-indicator" id="status-indicator"></span>
+                    <span class="cuda-title">Status do fluxo</span>
+                </div>
+                <div class="cuda-details" id="status-summary">Aguardando seleção de modo</div>
+            </div>
+        </aside>
+        <main class="main-content">
+            <section id="step-mode" class="tab-panel active">
+                <div class="glass-card" style="max-width: 760px; margin: auto;">
+                    <h3>Escolha o modo de execução</h3>
+                    <p style="color: var(--text-muted); margin-bottom: 20px;">Somente o essencial. Avance quando o modo estiver definido.</p>
+                    <div class="input-group">
+                        <label><input type="radio" name="mode" value="train" checked> Treinar modelos</label>
+                        <p class="input-desc">Executa apenas o treinamento do modelo.</p>
+                    </div>
+                    <div class="input-group">
+                        <label><input type="radio" name="mode" value="train_infer"> Treinar + inferência</label>
+                        <p class="input-desc">Preprocessa, treina e gera predição automaticamente.</p>
+                    </div>
+                    <div class="input-group">
+                        <label><input type="radio" name="mode" value="infer_post"> Inferência + pós-processamento</label>
+                        <p class="input-desc">Carrega um modelo treinado e produz resultados vetoriais.</p>
+                    </div>
+                    <div class="input-group">
+                        <label><input type="radio" name="mode" value="post_only"> Apenas pós-processamento</label>
+                        <p class="input-desc">Usa máscara existente e aplica filtros morfológicos.</p>
+                    </div>
+                    <div class="button-group" style="margin-top: 24px; justify-content: flex-end;">
+                        <button class="btn btn-primary" id="btn-next-mode">Continuar</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="step-data" class="tab-panel">
+                <div class="glass-card" style="max-width: 780px; margin: auto; display: grid; gap: 20px;">
+                    <div>
+                        <h3>Enviar dados de entrada</h3>
+                        <p style="color: var(--text-muted);">Use arquivos GeoJSON/ZIP para vetores ou carregue modelos e máscaras quando necessários.</p>
+                    </div>
+                    <div class="upload-zone" id="upload-talhao" style="cursor: pointer;">
+                        <h4>Talhão</h4>
+                        <span class="upload-filename" id="filename-talhao">Nenhum arquivo selecionado</span>
+                        <input type="file" id="input-file-talhao" accept=".geojson,.zip" style="display:none">
+                    </div>
+                    <div class="upload-zone" id="upload-linhas" style="cursor: pointer;">
+                        <h4>Linhas centrais</h4>
+                        <span class="upload-filename" id="filename-linhas">Nenhum arquivo selecionado</span>
+                        <input type="file" id="input-file-linhas" accept=".geojson,.zip" style="display:none">
+                    </div>
+                    <div class="upload-zone" id="upload-path-linhas" style="cursor: pointer;">
+                        <h4>Sentido das Linhas (path_linhas - Opcional)</h4>
+                        <span class="upload-filename" id="filename-path-linhas">Nenhum arquivo selecionado</span>
+                        <input type="file" id="input-file-path-linhas" accept=".geojson,.zip" style="display:none">
+                    </div>
+                    <div class="upload-zone" id="upload-checkpoint" style="cursor: pointer;">
+                        <h4>Checkpoint (.pth)</h4>
+                        <span class="upload-filename" id="filename-checkpoint">Nenhum arquivo selecionado</span>
+                        <input type="file" id="input-file-checkpoint" accept=".pth" style="display:none">
+                    </div>
+                    <div class="upload-zone" id="upload-mask" style="cursor: pointer;">
+                        <h4>Máscara / resultado (.tif)</h4>
+                        <span class="upload-filename" id="filename-mask">Nenhum arquivo selecionado</span>
+                        <input type="file" id="input-file-mask" accept=".tif" style="display:none">
+                    </div>
+                    <div class="button-group" style="justify-content: space-between;">
+                        <button class="btn btn-secondary" id="btn-back-data">Voltar</button>
+                        <button class="btn btn-primary" id="btn-next-data">Continuar</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="step-params" class="tab-panel">
+                <div class="glass-card" style="max-width: 780px; margin: auto; display: grid; gap: 16px;">
+                    <h3>Parâmetros principais</h3>
+
+                    <div class="input-group" style="background: rgba(255,255,255,0.04); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color, #333);">
+                        <label style="font-weight: 600; margin-bottom: 8px;">Perfil do Pós-Processamento e Geometria</label>
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                <input type="radio" name="profile" value="tiro_reto" checked id="profile-tiro-reto">
+                                <span>🎯 <strong>Tiro Reto</strong> (Linhas retas / Extensão à borda)</span>
+                            </label>
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                <input type="radio" name="profile" value="curvas" id="profile-curvas">
+                                <span>🔄 <strong>Curvas & Matações</strong> (Plantio em nível / Preserva matações)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="input-group-row">
+                        <div class="input-group">
+                            <label for="param-buffer">Buffer das linhas (m)</label>
+                            <input type="number" id="param-buffer" min="0.5" max="5" step="0.01" value="1.37">
+                        </div>
+                        <div class="input-group">
+                            <label for="param-tile-size">Tamanho do tile</label>
+                            <select id="param-tile-size">
+                                <option value="256" selected>256</option>
+                                <option value="512">512</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="input-group-row">
+                        <div class="input-group">
+                            <label for="param-batch-size">Batch size</label>
+                            <input type="number" id="param-batch-size" min="1" max="8" value="2">
+                        </div>
+                        <div class="input-group">
+                            <label for="param-epochs">Épocas</label>
+                            <input type="number" id="param-epochs" min="1" max="100" value="10">
+                        </div>
+                        <div class="input-group">
+                            <label for="param-threshold">Threshold</label>
+                            <input type="number" id="param-threshold" min="0.1" max="0.9" step="0.05" value="0.5">
+                        </div>
+                    </div>
+                    <div class="input-group-row">
+                        <div class="input-group">
+                            <label for="param-min-area">Área mínima (m²)</label>
+                            <input type="number" id="param-min-area" min="1" max="200" value="10">
+                        </div>
+                        <div class="input-group">
+                            <label for="param-close-size">Fechamento</label>
+                            <input type="number" id="param-close-size" min="0" max="21" step="2" value="5">
+                        </div>
+                        <div class="input-group">
+                            <label for="param-open-size">Abertura</label>
+                            <input type="number" id="param-open-size" min="0" max="21" step="2" value="3">
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="param-output-path">Caminho de saída</label>
+                        <input type="text" id="param-output-path" value="data/outputs">
+                        <span class="input-desc">As saídas serão salvas no diretório informado.</span>
+                    </div>
+                    <div class="input-group" style="flex-direction: row; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="param-export-lines" checked style="width: auto; margin: 0;">
+                        <label for="param-export-lines" style="margin: 0; font-weight: 500;">Exportar como Linhas de Centro (LineString)</label>
+                    </div>
+                    <p class="input-desc" style="margin-top: -8px; margin-bottom: 8px;">Converte as fileiras preditas de formato poligonal para linhas centrais contínuas.</p>
+                    
+                    <div class="input-group" style="flex-direction: row; align-items: center; gap: 8px;" id="group-calc-entrelinhas">
+                        <input type="checkbox" id="param-calc-entrelinhas" checked style="width: auto; margin: 0;">
+                        <label for="param-calc-entrelinhas" style="margin: 0; font-weight: 500;">Calcular Entrelinhas Curvas (predicao_entrelinhas.geojson)</label>
+                    </div>
+                    <p class="input-desc" style="margin-top: -8px; margin-bottom: 8px;">Gera as entrelinhas acompanhando a normal e a sinuosidade de cada fileira curva.</p>
+
+                    <div class="button-group" style="justify-content: space-between;">
+                        <button class="btn btn-secondary" id="btn-back-params">Voltar</button>
+                        <button class="btn btn-primary" id="btn-next-params">Continuar</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="step-execute" class="tab-panel">
+                <div class="glass-card" style="max-width: 780px; margin: auto; display: grid; gap: 20px;">
+                    <h3>Pronto para execução</h3>
+                    <p style="color: var(--text-muted);">Revise o modo e execute. O fluxo exibirá status e logs simples.</p>
+                    <div class="input-group">
+                        <label>Status atual</label>
+                        <div id="execution-status" style="font-weight: 600;">Aguardando...</div>
+                    </div>
+                    <div class="input-group">
+                        <label>Progresso</label>
+                        <progress id="execution-progress" value="0" max="100" style="width: 100%; height: 18px;"></progress>
+                    </div>
+                    <div class="input-group">
+                        <label>Log</label>
+                        <div class="log-console" id="execution-log" style="height: 220px; overflow-y: auto;"></div>
+                    </div>
+                    <div class="button-group" style="justify-content: space-between;">
+                        <button class="btn btn-secondary" id="btn-back-execute">Voltar</button>
+                        <button class="btn btn-primary" id="btn-start-action">Iniciar</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="step-result" class="tab-panel">
+                <div class="glass-card" style="max-width: 780px; margin: auto; display: grid; gap: 20px;">
+                    <h3>Resultado</h3>
+                    <div class="input-group">
+                        <label>Status final</label>
+                        <div id="result-status" style="font-weight: 600;">Nenhum fluxo iniciado</div>
+                    </div>
+                    <div class="input-group">
+                        <label>Resumo</label>
+                        <div id="result-summary" style="color: var(--text-muted);">Os resultados aparecerão aqui após a execução.</div>
+                    </div>
+                    <div class="button-group" style="gap: 12px; flex-wrap: wrap;">
+                        <a class="btn btn-secondary" id="download-model" href="#" target="_blank">Download do Modelo</a>
+                        <a class="btn btn-secondary" id="download-raster" href="#" target="_blank">Download GeoTIFF</a>
+                        <a class="btn btn-secondary" id="download-geojson" href="#" target="_blank">Download Linhas (GeoJSON)</a>
+                        <a class="btn btn-secondary" id="download-entrelinhas-geojson" href="#" target="_blank">Download Entrelinhas (GeoJSON)</a>
+                    </div>
+                    <div class="button-group" style="justify-content: flex-end;">
+                        <button class="btn btn-primary" id="btn-back-result">Voltar</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="advanced-panel" class="tab-panel" style="display:none;">
+                <div class="glass-card" style="max-width: 780px; margin: auto;">
+                    <h3>Aba avançada</h3>
+                    <p style="color: var(--text-muted);">Visualização de mapa e vetores disponível apenas para usuários técnicos.</p>
+                    <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 12px;">
+                        <p>O mapa não é exibido por padrão nesta interface limpa.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

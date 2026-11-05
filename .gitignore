@@ -1,0 +1,47 @@
+# Dados de treinamento e amostras (tiles/imagens e máscaras)
+/data/
+/data_set/
+
+# Entradas, saídas e resultados de inferência
+/inferencia/
+/inferencia_teste_rafael_1/
+/Gerar_bordadura/saida_*/
+/Gerar_bordadura/MDT.tif
+
+# Pesos de modelos treinados
+/models/*.pt
+/models/*.pth
+/models/*.onnx
+
+# Imagens e rasters grandes
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.jp2
+
+# Formatos vetoriais e bancos geoespaciais (inclui todos os componentes do shapefile)
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.qix
+*.gpkg
+*.geojson
+
+# Arquivos compactados, backups e arquivos temporários
+*.zip
+/backups/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+Thumbs.db
+.DS_Store

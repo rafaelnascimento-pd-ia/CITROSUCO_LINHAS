@@ -1,0 +1,8 @@
+# Passo 1: Processar primeiro dataset (63996)
+# Executa com append: false para CRIAR novo modelo
+gpkg_path: 63996.gpkg
+lines_path: data_set/63996/VETORES/linhas.geojson
+talhao_path: data_set/63996/VETORES/talhao.geojson
+epochs: 10
+buffer_size: 1.5
+append: false

@@ -1,0 +1,32 @@
+# ==============================================================================
+# CONFIGURAÇÃO DE INFERÊNCIA — PERFIL CURVAS E MATAÇÕES
+# Uso: python main.py infer_post --config configs/infer_curvas.yaml
+# ==============================================================================
+
+# Entradas
+gpkg_path: inferencia/76979/76979.gpkg
+talhao_path: inferencia/76979/talhoes2.geojson
+checkpoint_path: models/best_model_20260531_180150.pth
+path_linhas: null
+
+# Diretórios
+data_dir: data
+output_dir: inferencia/76979_curvas
+
+# Perfil dedicado para plantio em curvas e nível (respeita matações e curvatura)
+profile: curvas
+
+# Parâmetros de Inferência da I.A.
+tile_size: 256
+stride: 64                  # Sobreposição densa para transições suaves nas curvas
+
+# Parâmetros de Pós-Processamento e Vetorização
+threshold: 0.40
+min_area_m2: 3.0            # Limiar ajustado para preservar pontas de matações
+close_size: 3
+open_size: 0
+skip_postprocess: false
+export_as_lines: true
+extend_to_boundary: false   # Desativado: preserva onde cada matação realmente termina
+min_row_spacing_m: 4.0
+max_row_spacing_m: 8.5

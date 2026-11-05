@@ -1,0 +1,19 @@
+# ==============================================================================
+# COMO GERAR ENTRELINHAS CURVAS (SEPARADAMENTE)
+# ==============================================================================
+
+# Execução com o Python da .venv:
+.venv\Scripts\python.exe scripts/calcular_entrelinhas_curvas/calcular_entrelinhas_curvas_robusto.py ^
+  -i inferencia/76979_curvas/outputs/predicao_linhas.geojson ^
+  -t inferencia/76979/talhoes2.geojson ^
+  -o inferencia/76979_curvas/outputs/entrelinhas ^
+  --min_row_spacing 4.0 ^
+  --max_row_spacing 8.5 ^
+  --sample_step 0.50
+
+# Parâmetros úteis:
+# -i : Arquivo de linhas de centro geradas pela inferência (.geojson ou .shp)
+# -t : Limite do talhão (.geojson ou .shp)
+# -o : Diretório onde serão salvas as entrelinhas (predicao_entrelinhas.geojson e .shp)
+# --sample_step: 0.50m (reduza para 0.25m em curvas muito fechadas)
+# --min_row_spacing / --max_row_spacing: faixa de espaçamento entre ruas

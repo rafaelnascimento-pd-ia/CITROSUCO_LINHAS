@@ -1,0 +1,8 @@
+# Passo 2: Processar segundo dataset (64000)
+# Executa com append: true para ADICIONAR ao modelo existente
+gpkg_path: 64000.gpkg
+lines_path: data_set/64000/VETORES/linhas.geojson
+talhao_path: data_set/64000/VETORES/talhoes.geojson
+epochs: 10
+buffer_size: 1.5
+append: true

@@ -1,0 +1,24 @@
+# Configuração para TREINAMENTO ÚNICO com MÚLTIPLOS DATASETS
+# Isso treina UM modelo com dados de 76979 (árvores adultas) e 76983 (árvores jovens) juntos!
+
+datasets:
+  - gpkg_path: data_set/76979/76979.gpkg
+    lines_path: data_set/76979/VETORES/LINHAS.geojson
+    talhao_path: data_set/76979/VETORES/TALHOES.geojson
+
+  - gpkg_path: inferencia/76983/76983.gpkg
+    lines_path: data_set/76983/VETORES/LINHAS.geojson
+    talhao_path: data_set/76983/VETORES/TALHOES.geojson
+
+# Parâmetros para TODOS os datasets
+data_dir: data
+models_dir: models
+encoder_name: resnet18
+buffer_size: 1.20
+tile_size: 256
+stride: 128
+
+# Configurações do Treinamento
+epochs: 10
+batch_size: 2
+lr: 0.0001

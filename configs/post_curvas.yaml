@@ -1,0 +1,24 @@
+# ==============================================================================
+# CONFIGURAÇÃO DE PÓS-PROCESSAMENTO ISOLADO — PERFIL CURVAS E MATAÇÕES
+# Uso: python main.py post_only --config configs/post_curvas.yaml
+# ==============================================================================
+
+# Entradas
+input_raster: data/outputs/predicao_linhas.tif
+talhao_path: data/synthetic/talhao.geojson
+output_dir: data/outputs_curvas
+
+# Perfil
+profile: curvas
+calc_entrelinhas: true
+
+# Parâmetros
+threshold: 0.40
+min_area_m2: 3.0
+close_size: 3
+open_size: 0
+skip_postprocess: false
+export_as_lines: true
+extend_to_boundary: false
+min_row_spacing_m: 4.0
+max_row_spacing_m: 8.5
