@@ -17,7 +17,7 @@ import argparse
 import numpy as np
 import geopandas as gpd
 import rasterio
-from shapely.geometry import Polygon, MultiLineString
+from shapely.geometry import Polygon, MultiPolygon, MultiLineString
 from pyproj import CRS, Transformer
 
 def sanitize_filename(name):
@@ -65,14 +65,15 @@ def make_polygon_3d(poly, mdt_src):
 
 def make_bordadura_route(poly):
     """Extrai o contorno externo 3D como MultiLineString para a rota."""
-    if poly is None or poly.is_empty or poly.geom_type != 'Polygon':
+    if poly is None or poly.is_empty:
         return None
-    coords = list(poly.exterior.coords)
-    if len(coords) < 2 or any(len(coord) < 3 for coord in coords):
-        return None
-    return MultiLineString([coords])
+    polygons = list(poly.geoms) if poly.geom_type == 'MultiPolygon' else [poly]
+    rings = [list(part.exterior.coords) for part in polygons if part.geom_type == 'Polygon']
+    rings = [coords for coords in rings if len(coords) >= 2 and all(len(c) >= 3 for c in coords)]
+    return MultiLineString(rings) if rings else None
 
-def process_talhao(talhao_path, src_mdt, output_path, transformer, metric_crs, buffer_distance):
+def process_talhao(talhao_path, src_mdt, output_path, transformer, metric_crs, buffer_distance,
+                   partition_resolution=1.0, partition_max_cells=4_000_000):
     """
     Processa o talhão: gera buffer, converte em 3D, e calcula atributos.
     """
@@ -80,18 +81,27 @@ def process_talhao(talhao_path, src_mdt, output_path, transformer, metric_crs, b
     if gdf_talhao.empty:
         return
         
-    # 1. Remover atributos originais (manter apenas geometria)
+    # Retain association with the original and child planting blocks.
     geom_col = gdf_talhao.geometry.name
-    gdf_talhao = gdf_talhao[[geom_col]].copy()
+    id_columns = [c for c in ('parent_id', 'field_id') if c in gdf_talhao.columns]
+    gdf_talhao = gdf_talhao[id_columns + [geom_col]].copy()
     
     # Reprojetar para o CRS métrico
     gdf_talhao_m = gdf_talhao.to_crs(metric_crs)
     
     # 2. Aplicar buffer (padrão 7.0 metros)
-    gdf_talhao_m['geometry'] = gdf_talhao_m.geometry.buffer(buffer_distance)
+    if 'field_id' in gdf_talhao_m.columns:
+        # Import from the repository when launched as a standalone script.
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        from src.field_partition import build_borders
+        gdf_talhao_m = build_borders(gdf_talhao_m, buffer_distance,
+                                    resolution=partition_resolution, max_cells=partition_max_cells)
+    else:
+        gdf_talhao_m['geometry'] = gdf_talhao_m.geometry.buffer(buffer_distance)
 
     # Explodir para Single Part
-    gdf_talhao_m = gdf_talhao_m.explode(index_parts=False)
+    if 'field_id' not in gdf_talhao_m.columns:
+        gdf_talhao_m = gdf_talhao_m.explode(index_parts=False)
     
     # 3. Reprojetar para o CRS do MDT
     gdf_talhao_proj = gdf_talhao_m.to_crs(src_mdt.crs)
@@ -105,6 +115,8 @@ def process_talhao(talhao_path, src_mdt, output_path, transformer, metric_crs, b
         if geom.geom_type == 'Polygon':
             geom_3d = make_polygon_3d(geom, src_mdt)
             geoms_3d.append(geom_3d)
+        elif geom.geom_type == 'MultiPolygon':
+            geoms_3d.append(MultiPolygon([make_polygon_3d(part, src_mdt) for part in geom.geoms]))
         else:
             geoms_3d.append(geom)
             
@@ -152,14 +164,13 @@ def process_talhao(talhao_path, src_mdt, output_path, transformer, metric_crs, b
         
         # C. Estatísticas de Z das coordenadas 3D do polígono
         poly_z_vals = []
-        if geom_proj and geom_proj.geom_type == 'Polygon':
-            for coord in geom_proj.exterior.coords:
-                if len(coord) >= 3:
-                    poly_z_vals.append(coord[2])
-            for interior in geom_proj.interiors:
-                for coord in interior.coords:
-                    if len(coord) >= 3:
-                        poly_z_vals.append(coord[2])
+        if geom_proj and geom_proj.geom_type in ('Polygon', 'MultiPolygon'):
+            polygons = geom_proj.geoms if geom_proj.geom_type == 'MultiPolygon' else [geom_proj]
+            for polygon in polygons:
+                for ring in [polygon.exterior, *polygon.interiors]:
+                    for coord in ring.coords:
+                        if len(coord) >= 3:
+                            poly_z_vals.append(coord[2])
                         
         if poly_z_vals:
             min_zs.append(float(np.min(poly_z_vals)))
@@ -181,16 +192,25 @@ def process_talhao(talhao_path, src_mdt, output_path, transformer, metric_crs, b
     gdf_talhao_proj['mean_z'] = mean_zs
     
     # 5. Reprojetar para WGS84 e salvar
+    from shapely import make_valid
     gdf_out = gdf_talhao_proj.to_crs("EPSG:4326")
-    gdf_out = gdf_out.explode(index_parts=False)
+    if 'field_id' in gdf_out.columns:
+        from src.field_partition import project_polygons
+        gdf_out = project_polygons(gdf_out, "EPSG:4326")
+    else:
+        gdf_out.geometry = gdf_out.geometry.map(make_valid)
+    if 'field_id' not in gdf_out.columns:
+        gdf_out = gdf_out.explode(index_parts=False)
     gdf_out.to_file(output_path, encoding="UTF-8")
 
     # A rota acompanha o contorno externo do buffer, preservando as cotas Z
     # amostradas no MDT e o CRS WGS84 do polígono de bordadura.
     route_geometries = [make_bordadura_route(geom) for geom in gdf_talhao_proj.geometry]
-    route_rows = [geom for geom in route_geometries if geom is not None]
-    if route_rows:
-        route_gdf = gpd.GeoDataFrame(geometry=route_rows, crs=gdf_talhao_proj.crs).to_crs("EPSG:4326")
+    route_indices = [i for i, geom in enumerate(route_geometries) if geom is not None]
+    if route_indices:
+        route_gdf = gdf_talhao_proj.iloc[route_indices][id_columns].copy()
+        route_gdf = gpd.GeoDataFrame(route_gdf, geometry=[route_geometries[i] for i in route_indices],
+                                    crs=gdf_talhao_proj.crs).to_crs("EPSG:4326")
         route_path = os.path.join(
             os.path.dirname(output_path),
             f"ROTA_BORDADURA_{os.path.basename(output_path).replace('BORDADURA_', '').rsplit('.', 1)[0]}.shp"
@@ -215,6 +235,10 @@ def main():
         "--output_dir", "-o", default=None,
         help="Diretório base de saída. Padrão: subpasta 'bordaduras' dentro da pasta mãe."
     )
+    parser.add_argument('--partition_resolution', type=float, default=1.0,
+                        help='Resolução métrica da partição conjunta das bordaduras.')
+    parser.add_argument('--partition_max_cells', type=int, default=4_000_000,
+                        help='Limite de células por região conectada de bordadura.')
     parser.add_argument(
         "--buffer_distance", "-b", type=float, default=7.0,
         help="Distância do buffer/bordadura do talhão em metros."
@@ -304,6 +328,7 @@ def main():
 
     # 4. Processamento
     processed_count = 0
+    failed_count = 0
     os.makedirs(args.output_dir, exist_ok=True)
 
     for idx, subdir in enumerate(subdirs):
@@ -340,16 +365,20 @@ def main():
         out_buf_path = os.path.join(sub_path_out, out_buf_name)
 
         try:
-            process_talhao(talhao_file, src_mdt, out_buf_path, transformer, metric_crs, args.buffer_distance)
+            process_talhao(talhao_file, src_mdt, out_buf_path, transformer, metric_crs, args.buffer_distance,
+                           args.partition_resolution, args.partition_max_cells)
             print(f"    [OK] Salvo: {out_buf_name}")
             processed_count += 1
         except Exception as e:
             print(f"    [ERRO] Falha ao processar talhão/buffer: {e}")
+            failed_count += 1
 
     src_mdt.close()
     print("\n" + "=" * 75)
     print(f"   LOTE CONCLUÍDO! {processed_count} TALHÕES PROCESSADOS COM SUCESSO.")
     print("=" * 75)
+    if failed_count:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

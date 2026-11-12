@@ -31,6 +31,18 @@ calc_entrelinhas: true
 min_row_spacing_m: 4.0
 max_row_spacing_m: 8.5
 
+# Separação espacial por orientação local. 0° e 180° são equivalentes.
+# 20° reutiliza a escala angular do paralelismo já adotada na deduplicação.
+# As distâncias são derivadas do espaçamento medido entre fileiras.
+field_partition:
+  enabled: true
+  angle_tolerance_deg: 20.0
+  cell_spacing_factor: 2.0
+  min_rows: 3
+  min_support_spacing_factor: 2.0
+  grid_resolution_m: 1.0
+  max_grid_cells: 4000000
+
 # MDT informado para a geração da bordadura.
 mdt_path: Gerar_bordadura/MDT.tif
 bordadura_buffer_distance: 7.0

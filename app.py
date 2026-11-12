@@ -550,7 +550,7 @@ def start_train():
     
     return jsonify({"status": "started"})
 
-def inference_worker(gpkg_filename, checkpoint_type, tile_size, stride, threshold, min_area, close_size, open_size, skip_postprocess, export_as_lines=False, profile="tiro_reto", calc_entrelinhas=False, extend_to_boundary=None, min_row_spacing_m=4.0, max_row_spacing_m=8.5):
+def inference_worker(gpkg_filename, checkpoint_type, tile_size, stride, threshold, min_area, close_size, open_size, skip_postprocess, export_as_lines=False, profile="tiro_reto", calc_entrelinhas=False, extend_to_boundary=None, min_row_spacing_m=4.0, max_row_spacing_m=8.5, field_partition_options=None):
     logger = get_logger("inference")
     TASK_STATES["inference"]["status"] = "running"
     TASK_STATES["inference"]["error"] = None
@@ -636,8 +636,18 @@ def inference_worker(gpkg_filename, checkpoint_type, tile_size, stride, threshol
             extend_to_boundary=extend_to_boundary,
             min_row_spacing_m=min_row_spacing_m,
             max_row_spacing_m=max_row_spacing_m,
-            logger=logger
+            logger=logger,
+            parent_fields=gpd.read_file(talhao_path),
+            field_partition_options=field_partition_options,
         )
+        if calc_entrelinhas:
+            from main import generate_interrows
+            interrows_path, count = generate_interrows(
+                results["geojson"], results.get("talhoes_geojson") or talhao_path,
+                os.path.dirname(results["geojson"]), min_row_spacing_m, max_row_spacing_m,
+                os.path.dirname(os.path.abspath(__file__)),
+            )
+            results.update(entrelinhas_geojson=interrows_path, num_entrelinhas=count)
         
         TASK_STATES["inference"]["progress"] = 100
         TASK_STATES["inference"]["status"] = "success"
@@ -681,7 +691,7 @@ def start_inference():
     TASK_STATES["inference"]["logs"] = []
     
     thread = threading.Thread(target=inference_worker, args=(
-        gpkg_filename, checkpoint_type, tile_size, stride, threshold, min_area, close_size, open_size, skip_postprocess, export_as_lines, profile, calc_entrelinhas, extend_to_boundary, min_row_spacing_m, max_row_spacing_m
+        gpkg_filename, checkpoint_type, tile_size, stride, threshold, min_area, close_size, open_size, skip_postprocess, export_as_lines, profile, calc_entrelinhas, extend_to_boundary, min_row_spacing_m, max_row_spacing_m, data.get("field_partition")
     ))
     thread.daemon = True
     thread.start()
@@ -689,7 +699,7 @@ def start_inference():
     return jsonify({"status": "started"})
 
 
-def postprocess_worker(input_raster_path, talhao_path, threshold, min_area, close_size, open_size, skip_postprocess, export_as_lines=False, profile="tiro_reto", calc_entrelinhas=False, extend_to_boundary=None, min_row_spacing_m=4.0, max_row_spacing_m=8.5):
+def postprocess_worker(input_raster_path, talhao_path, threshold, min_area, close_size, open_size, skip_postprocess, export_as_lines=False, profile="tiro_reto", calc_entrelinhas=False, extend_to_boundary=None, min_row_spacing_m=4.0, max_row_spacing_m=8.5, field_partition_options=None):
     logger = get_logger("postprocess")
     TASK_STATES["postprocess"]["status"] = "running"
     TASK_STATES["postprocess"]["error"] = None
@@ -733,8 +743,18 @@ def postprocess_worker(input_raster_path, talhao_path, threshold, min_area, clos
             extend_to_boundary=extend_to_boundary,
             min_row_spacing_m=min_row_spacing_m,
             max_row_spacing_m=max_row_spacing_m,
-            logger=logger
+            logger=logger,
+            parent_fields=gpd.read_file(talhao_path),
+            field_partition_options=field_partition_options,
         )
+        if calc_entrelinhas:
+            from main import generate_interrows
+            interrows_path, count = generate_interrows(
+                results["geojson"], results.get("talhoes_geojson") or talhao_path,
+                os.path.dirname(results["geojson"]), min_row_spacing_m, max_row_spacing_m,
+                os.path.dirname(os.path.abspath(__file__)),
+            )
+            results.update(entrelinhas_geojson=interrows_path, num_entrelinhas=count)
         TASK_STATES["postprocess"]["progress"] = 100
         TASK_STATES["postprocess"]["status"] = "success"
         TASK_STATES["postprocess"]["results"] = results
@@ -772,7 +792,7 @@ def start_postprocess():
     TASK_STATES["postprocess"]["logs"] = []
 
     thread = threading.Thread(target=postprocess_worker, args=(
-        input_raster, talhao_path, threshold, min_area, close_size, open_size, skip_postprocess, export_as_lines, profile, calc_entrelinhas, extend_to_boundary, min_row_spacing_m, max_row_spacing_m
+        input_raster, talhao_path, threshold, min_area, close_size, open_size, skip_postprocess, export_as_lines, profile, calc_entrelinhas, extend_to_boundary, min_row_spacing_m, max_row_spacing_m, data.get("field_partition")
     ))
     thread.daemon = True
     thread.start()
@@ -856,6 +876,29 @@ def download_vector_entrelinhas_shapefile():
         return send_file(zip_path, as_attachment=True, download_name="predicao_entrelinhas_shp.zip")
     except Exception as e:
         return f"Error creating zip: {str(e)}", 500
+
+@app.route('/api/download/vector/talhoes_geojson')
+def download_talhoes_geojson():
+    path = os.path.join(OUTPUT_FOLDER, "talhoes_separados.geojson")
+    if os.path.exists(path):
+        return send_file(path, as_attachment=True, download_name="talhoes_separados.geojson")
+    return "Talhões ainda não disponíveis", 404
+
+
+@app.route('/api/download/vector/talhoes_shapefile')
+def download_talhoes_shapefile():
+    import io
+    directory = os.path.join(OUTPUT_FOLDER, "shp")
+    if not os.path.isfile(os.path.join(directory, "TALHOES_SEPARADOS.shp")):
+        return "Talhões ainda não disponíveis", 404
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as bundle:
+        for filename in sorted(os.listdir(directory)):
+            if os.path.splitext(filename)[0] == 'TALHOES_SEPARADOS':
+                bundle.write(os.path.join(directory, filename), filename)
+    archive.seek(0)
+    return send_file(archive, as_attachment=True, download_name="talhoes_separados.zip")
+
 
 # --- Checkpoint Management ---
 

@@ -385,6 +385,14 @@ function updateResultLinks(enabled = false, results = {}) {
         entrelinhas.classList.toggle('disabled', !hasEntrelinhas);
         entrelinhas.style.display = hasEntrelinhas ? 'inline-block' : 'none';
     }
+    ['geojson', 'shapefile'].forEach(format => {
+        const link = $(`#download-talhoes-${format}`);
+        if (!link) return;
+        const hasFields = Boolean(enabled && results && results.talhoes_geojson);
+        link.href = hasFields ? `/api/download/vector/talhoes_${format}` : '#';
+        link.classList.toggle('disabled', !hasFields);
+        link.style.display = hasFields ? 'inline-block' : 'none';
+    });
     
     [model, raster, geojson].forEach(el => el.classList.toggle('disabled', !enabled));
 }

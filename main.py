@@ -96,6 +96,7 @@ def wrap_with_defaults(cfg):
         'corridor_validation_enabled': False,
         'topology_validation_enabled': True,
         'write_run_metadata_file': True,
+        'field_partition': {},
     }
     for key, value in defaults.items():
         cfg.setdefault(key, value)
@@ -292,8 +293,12 @@ def normalize_result_shapefiles(
                         records.sort(key=lambda item: item[0])
                         output_geometries = [item[2] for item in records]
                         anchors = [item[3] for item in records]
+                        gdf = gdf.iloc[[item[1] for item in records]].reset_index(drop=True)
 
-                    gdf = gpd.GeoDataFrame(geometry=output_geometries, crs='EPSG:4326')
+                    gdf = gdf.drop(columns=[gdf.geometry.name]).copy()
+                    gdf = gpd.GeoDataFrame(gdf, geometry=output_geometries, crs='EPSG:4326')
+                    # Replace old coordinate attributes, retaining field/source IDs.
+                    gdf = gdf.drop(columns=[c for c in gdf.columns if c.lower() in ('x', 'y', 'z')])
                     gdf['X'] = [anchor[0] if anchor else None for anchor in anchors]
                     gdf['Y'] = [anchor[1] if anchor else None for anchor in anchors]
                     gdf['Z'] = [anchor[2] if anchor else None for anchor in anchors]
@@ -407,6 +412,14 @@ def normalize_result_shapefiles(
                         simplified = []
                         for geom in metric_gdf.geometry:
                             base_geom = geom
+                            if is_route and 'field_id' in gdf.columns:
+                                # Shared cuts must remain on the exact boundary;
+                                # smoothing would enter a neighbouring planting block.
+                                simplified.append(force_multipart(base_geom))
+                                continue
+                            if geom.geom_type == 'MultiLineString' and not is_route and 'field_id' in gdf.columns:
+                                simplified.append(force_multipart(base_geom))
+                                continue
                             if is_route and geom.geom_type == 'MultiLineString':
                                 route_parts = [smooth_route_line(part) for part in geom.geoms]
                                 base_geom = MultiLineString(route_parts)
@@ -422,7 +435,7 @@ def normalize_result_shapefiles(
                             simplified, index=metric_gdf.index, crs=metric_crs
                         )
                         gdf = metric_gdf.to_crs('EPSG:4326')
-                    elif is_boundary and not gdf.empty:
+                    elif is_boundary and not gdf.empty and 'field_id' not in gdf.columns:
                         metric_crs = gdf.estimate_utm_crs()
                         metric_gdf = gdf.to_crs(metric_crs)
 
@@ -436,44 +449,24 @@ def normalize_result_shapefiles(
                                 for ring in [polygon.exterior, *polygon.interiors]
                             )
 
-                        # Dissolve overlapping buffers so the maneuver area is represented
-                        # by one valid multipart feature instead of overlapping polygons.
-                        merged_boundary = unary_union([
-                            geom for geom in metric_gdf.geometry
-                            if geom is not None and not geom.is_empty
-                        ])
-                        tolerances = [boundary_simplify_tolerance_m * step for step in range(1, 6)]
-                        simplified_boundary = merged_boundary
-                        for tolerance in tolerances:
-                            candidate = merged_boundary.simplify(tolerance, preserve_topology=True)
-                            simplified_boundary = candidate
-                            if polygon_vertex_count(candidate) <= max_boundary_vertices:
-                                break
-                        if simplified_boundary.geom_type == 'Polygon':
-                            simplified_boundary = MultiPolygon([simplified_boundary])
-
-                        polygons = (
-                            list(simplified_boundary.geoms)
-                            if simplified_boundary.geom_type == 'MultiPolygon'
-                            else [simplified_boundary]
-                        )
-                        first_ring = polygons[0].exterior.coords if polygons else []
-                        anchor_metric = tuple(first_ring[0]) if first_ring else None
-                        metric_gdf = gpd.GeoDataFrame(
-                            geometry=[simplified_boundary], crs=metric_crs
-                        )
+                        # Keep one record per child. Never dissolve across field IDs.
+                        boundaries = []
+                        for geom in metric_gdf.geometry:
+                            candidate = geom
+                            if 'field_id' not in metric_gdf.columns:
+                                for step in range(1, 6):
+                                    candidate = geom.simplify(boundary_simplify_tolerance_m * step, preserve_topology=True)
+                                    if polygon_vertex_count(candidate) <= max_boundary_vertices:
+                                        break
+                            boundaries.append(MultiPolygon([candidate]) if candidate.geom_type == 'Polygon' else candidate)
+                        metric_gdf.geometry = gpd.GeoSeries(boundaries, index=metric_gdf.index, crs=metric_crs)
                         gdf = metric_gdf.to_crs('EPSG:4326')
-                        if anchor_metric:
-                            anchor_wgs84 = Transformer.from_crs(
-                                metric_crs, 'EPSG:4326', always_xy=True
-                            ).transform(*anchor_metric[:2])
-                            gdf['X'] = [anchor_wgs84[0]]
-                            gdf['Y'] = [anchor_wgs84[1]]
-                            gdf['Z'] = [anchor_metric[2] if len(anchor_metric) > 2 else 0.0]
-                        else:
-                            gdf['X'] = [None]
-                            gdf['Y'] = [None]
-                            gdf['Z'] = [None]
+                    if is_boundary:
+                        from src.field_partition import project_polygons
+                        gdf = project_polygons(gdf, 'EPSG:4326')
+                    # IDs are needed above to preserve child boundaries, but
+                    # the delivery attribute table contains coordinates only.
+                    gdf = gdf[['X', 'Y', 'Z', gdf.geometry.name]]
                     gdf.to_file(path, driver='ESRI Shapefile', encoding='UTF-8')
 
 
@@ -664,7 +657,8 @@ def train_infer_command(cfg, base_dir=None):
         max_curvature=float(cfg['max_curvature']) if cfg.get('max_curvature') is not None else None,
         corridor_validation_enabled=bool(cfg.get('corridor_validation_enabled', False)),
         topology_validation_enabled=bool(cfg.get('topology_validation_enabled', True)),
-        write_run_metadata_file=bool(cfg.get('write_run_metadata_file', True))
+        write_run_metadata_file=bool(cfg.get('write_run_metadata_file', True)),
+        field_partition_options=cfg.get('field_partition'),
     )
     print('Fluxo train_infer concluído.')
 
@@ -714,7 +708,8 @@ def infer_post_command(cfg, base_dir=None):
         max_curvature=float(cfg['max_curvature']) if cfg.get('max_curvature') is not None else None,
         corridor_validation_enabled=bool(cfg.get('corridor_validation_enabled', False)),
         topology_validation_enabled=bool(cfg.get('topology_validation_enabled', True)),
-        write_run_metadata_file=bool(cfg.get('write_run_metadata_file', True))
+        write_run_metadata_file=bool(cfg.get('write_run_metadata_file', True)),
+        field_partition_options=cfg.get('field_partition'),
     )
 
     if bool(cfg.get('calc_entrelinhas', False)):
@@ -723,7 +718,7 @@ def infer_post_command(cfg, base_dir=None):
         lines_path = results.get('geojson')
         interrows_path, interrows_count = generate_interrows(
             lines_path=lines_path,
-            talhao_path=talhao_path,
+            talhao_path=results.get('talhoes_geojson') or talhao_path,
             output_dir=os.path.dirname(lines_path),
             min_spacing=float(cfg.get('min_row_spacing_m', 4.0)),
             max_spacing=float(cfg.get('max_row_spacing_m', 8.5)),
@@ -766,14 +761,18 @@ def resultado_command(cfg, base_dir=None):
 
         talhao_dir = os.path.join(staging_dir, 'entrada', 'talhao')
         os.makedirs(talhao_dir)
-        staged_talhao = os.path.join(talhao_dir, os.path.basename(talhao_path))
-        os.symlink(talhao_path, staged_talhao)
+        # Use child polygons, with stable IDs, for both borders and routes.
+        border_input = results.get('talhoes_geojson') or talhao_path
+        staged_talhao = os.path.join(talhao_dir, 'talhoes.geojson')
+        shutil.copy2(border_input, staged_talhao)
         command = [
             sys.executable, script_path,
             '--input_dir', os.path.dirname(talhao_dir),
             '--mdt_path', mdt_path,
             '--output_dir', bordadura_dir,
             '--buffer_distance', str(float(cfg.get('bordadura_buffer_distance', 7.0))),
+            '--partition_resolution', str(float((cfg.get('field_partition') or {}).get('grid_resolution_m') or 1.0)),
+            '--partition_max_cells', str(int((cfg.get('field_partition') or {}).get('max_grid_cells', 4_000_000))),
         ]
         print('=== Gerando bordadura do talhão com altitude do MDT ===')
         subprocess.run(command, check=True)
@@ -797,7 +796,7 @@ def resultado_command(cfg, base_dir=None):
                     os.path.join(root, name)
                     for name in filenames
                     if name.lower().endswith('.shp')
-                    and os.path.splitext(name)[0].lower() != 'predicao_linhas'
+                    and os.path.splitext(name)[0].lower() not in ('predicao_linhas', 'talhoes_separados')
                 )
         if not shp_paths:
             raise FileNotFoundError('O fluxo terminou sem gerar arquivos Shapefile.')
@@ -818,6 +817,20 @@ def resultado_command(cfg, base_dir=None):
                 target = os.path.join(final_output_dir, target_name)
                 shutil.copy2(source, target)
                 copied.add(target)
+
+        metadata_path = os.path.join(os.path.dirname(results['geojson']), 'separacao_metadata.json')
+        if os.path.isfile(metadata_path):
+            target = os.path.join(final_output_dir, 'separacao_metadata.json')
+            shutil.copy2(metadata_path, target)
+            copied.add(target)
+
+        # Remove this retired product from earlier runs of the same delivery.
+        for filename in os.listdir(final_output_dir):
+            stem, extension = os.path.splitext(filename.lower())
+            if ((stem == 'talhoes_separados' and extension in
+                 ('.shp', '.shx', '.dbf', '.prj', '.cpg', '.qix', '.sbn', '.sbx'))
+                    or filename.lower() == 'talhoes_separados.shp.xml'):
+                os.remove(os.path.join(final_output_dir, filename))
 
     print(f'Fluxo resultado concluído. {len(copied)} arquivo(s) Shapefile e auxiliares em: {final_output_dir}')
 
@@ -876,7 +889,9 @@ def post_only_command(cfg, base_dir=None):
         max_curvature=float(cfg['max_curvature']) if cfg.get('max_curvature') is not None else None,
         corridor_validation_enabled=bool(cfg.get('corridor_validation_enabled', False)),
         topology_validation_enabled=bool(cfg.get('topology_validation_enabled', True)),
-        write_run_metadata_file=bool(cfg.get('write_run_metadata_file', True))
+        write_run_metadata_file=bool(cfg.get('write_run_metadata_file', True)),
+        parent_fields=talhao_gdf,
+        field_partition_options=cfg.get('field_partition'),
     )
     print('Fluxo post_only concluído.')
 

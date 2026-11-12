@@ -324,7 +324,8 @@ def run_segmented_inference_pipeline(raster_path, talhao_path, checkpoint_path, 
                                      max_curvature=None,
                                      corridor_validation_enabled=False,
                                      topology_validation_enabled=True,
-                                     write_run_metadata_file=True):
+                                     write_run_metadata_file=True,
+                                     field_partition_options=None):
     """
     Executa a inferência de forma segmentada (talhão por talhão) para evitar estouro de memória (RAM)
     em imagens gigantescas. Suporta os perfis 'tiro_reto' e 'curvas'.
@@ -340,6 +341,8 @@ def run_segmented_inference_pipeline(raster_path, talhao_path, checkpoint_path, 
     
     # 1. Read talhao features
     talhao_gdf = gpd.read_file(talhao_path)
+    talhao_gdf = talhao_gdf.reset_index(drop=True)
+    talhao_gdf['parent_id'] = [f'P{i + 1:05d}' for i in range(len(talhao_gdf))]
     num_features = len(talhao_gdf)
     logger(f"Total de talhões detectados: {num_features}")
 
@@ -393,13 +396,17 @@ def run_segmented_inference_pipeline(raster_path, talhao_path, checkpoint_path, 
             max_curvature=max_curvature,
             corridor_validation_enabled=corridor_validation_enabled,
             topology_validation_enabled=topology_validation_enabled,
-            write_run_metadata_file=write_run_metadata_file
+            write_run_metadata_file=write_run_metadata_file,
+            parent_fields=talhao_gdf,
+            field_partition_options=field_partition_options,
         )
 
     # Multi-feature segmented flow
     all_gdfs = []
     all_raw_gdfs = []
     all_entrelinhas_gdfs = []
+    all_fields_gdfs = []
+    all_partition_metadata = []
     temp_dir = os.path.join(output_dir, "temp_segments")
     os.makedirs(temp_dir, exist_ok=True)
     final_output_dir = os.path.join(output_dir, "outputs")
@@ -475,8 +482,16 @@ def run_segmented_inference_pipeline(raster_path, talhao_path, checkpoint_path, 
                 max_curvature=max_curvature,
                 corridor_validation_enabled=corridor_validation_enabled,
                 topology_validation_enabled=topology_validation_enabled,
-                write_run_metadata_file=write_run_metadata_file
+                write_run_metadata_file=write_run_metadata_file,
+                parent_fields=single_talhao_gdf,
+                field_partition_options=field_partition_options,
             )
+
+            if seg_results.get("talhoes_geojson"):
+                all_fields_gdfs.append(gpd.read_file(seg_results["talhoes_geojson"]))
+                import json
+                with open(os.path.join(segment_output_dir, "outputs", "separacao_metadata.json"), encoding="utf-8") as stream:
+                    all_partition_metadata.extend(json.load(stream)["parents"])
 
             seg_geojson_path = os.path.join(segment_output_dir, "outputs", "predicao_linhas.geojson")
             if os.path.exists(seg_geojson_path):
@@ -495,6 +510,8 @@ def run_segmented_inference_pipeline(raster_path, talhao_path, checkpoint_path, 
             logger(f"[ERRO] Falha ao processar o Talhão {segment_num}: {e}")
             import traceback
             logger(traceback.format_exc())
+            # A partial delivery must not silently omit a failed parent field.
+            raise
 
         finally:
             if os.path.exists(segment_output_dir):
@@ -524,6 +541,21 @@ def run_segmented_inference_pipeline(raster_path, talhao_path, checkpoint_path, 
     geojson_path = os.path.join(final_output_dir, "predicao_linhas.geojson")
     shp_dir = os.path.join(final_output_dir, "shp")
     shp_path = os.path.join(shp_dir, "predicao_linhas.shp")
+
+    fields_path = None
+    if all_fields_gdfs:
+        from src.field_partition import _validate_partition, metric_frame, project_polygons
+        combined_fields = gpd.GeoDataFrame(pd.concat(all_fields_gdfs, ignore_index=True), crs="EPSG:4326")
+        metric_parents = metric_frame(talhao_gdf)
+        _validate_partition(project_polygons(combined_fields, metric_parents.crs), metric_parents)
+        fields_path = os.path.join(final_output_dir, "talhoes_separados.geojson")
+        combined_fields.to_file(fields_path, driver="GeoJSON")
+        os.makedirs(shp_dir, exist_ok=True)
+        combined_fields[["parent_id", "field_id", "area_m2", "angle_deg", "n_rows", "support_m", "geometry"]].to_file(
+            os.path.join(shp_dir, "TALHOES_SEPARADOS.shp"), encoding="UTF-8")
+        import json
+        with open(os.path.join(final_output_dir, "separacao_metadata.json"), "w", encoding="utf-8") as stream:
+            json.dump({"options": field_partition_options, "parents": all_partition_metadata}, stream, ensure_ascii=False, indent=2)
     
     if all_gdfs:
         merged_gdf = gpd.GeoDataFrame(pd.concat(all_gdfs, ignore_index=True), crs="EPSG:4326")
@@ -611,6 +643,7 @@ def run_segmented_inference_pipeline(raster_path, talhao_path, checkpoint_path, 
         "entrelinhas_geojson": entrelinhas_path,
         "num_entrelinhas": entrelinhas_count
     }
+    results["talhoes_geojson"] = fields_path
     
     if reported_angle is not None:
         results["dominant_angle_deg"] = float(np.degrees(reported_angle))

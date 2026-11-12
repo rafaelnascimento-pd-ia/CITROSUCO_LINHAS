@@ -681,6 +681,11 @@ def merge_collinear_lines(lines, max_gap_m=12.0, max_offset_m=1.5, max_angle_deg
                     if offset > max_offset_m:
                         continue
 
+                    if active_boundary is not None:
+                        bridge = LineString([part1[-1], part2[0]])
+                        if not active_boundary.covers(bridge):
+                            continue
+
                     merged_index = j
                     best_order = part1 + part2
                     break
@@ -770,6 +775,8 @@ def merge_collinear_lines(lines, max_gap_m=12.0, max_offset_m=1.5, max_angle_deg
                 # Valida ponte: nao pode cruzar outras fileiras
                 bridge = LineString([part1[-1], part2[0]])
                 bridge_valid = True
+                if active_boundary is not None and not active_boundary.covers(bridge):
+                    continue
                 if bridge.length > 0.5:
                     bridge_crossings = tree.query(bridge)
                     for b_idx in bridge_crossings:
@@ -1239,7 +1246,8 @@ def run_postprocessing(prob_map, transform, crs, talhao_geom=None, output_dir="d
                        max_curvature=None,
                        corridor_validation_enabled=False,
                        topology_validation_enabled=True,
-                       write_run_metadata_file=True):
+                       write_run_metadata_file=True,
+                       parent_fields=None, field_partition_options=None):
     """
     Executa o fluxo limpo, fiel e robusto de pos-processamento, thresholding, vetorizacao e extracao das linhas.
     """
@@ -1459,12 +1467,26 @@ def run_postprocessing(prob_map, transform, crs, talhao_geom=None, output_dir="d
     else:
         features_to_export = polygons
 
+    # Partition before exporting rows or calculating derived interrows/borders.
+    fields_path = None
+    partitioned_gdf = None
+    if export_as_lines and talhao_geom is not None and not talhao_geom.is_empty:
+        from src.field_partition import export_partition
+        parents = parent_fields if parent_fields is not None else gpd.GeoDataFrame(geometry=[talhao_geom], crs=crs)
+        partitioned_gdf, fields_path = export_partition(
+            gpd.GeoDataFrame(geometry=final_lines, crs=crs), parents,
+            os.path.join(output_dir, "outputs"), options=field_partition_options,
+            min_spacing=min_row_spacing_m, max_spacing=max_row_spacing_m, logger=logger,
+        )
+        final_lines = list(partitioned_gdf.geometry)
+        features_to_export = final_lines
+
     # Monta GeoDataFrame de saida
     if len(features_to_export) == 0:
         logger("  [Aviso] Nenhuma feicao resultante apos o processamento!")
         gdf_wgs84 = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
     else:
-        gdf_utm = gpd.GeoDataFrame(geometry=features_to_export, crs=crs)
+        gdf_utm = partitioned_gdf if partitioned_gdf is not None else gpd.GeoDataFrame(geometry=features_to_export, crs=crs)
         gdf_utm['area_m2'] = gdf_utm.geometry.area
         gdf_utm['length_m'] = gdf_utm.geometry.length
         logger("  Reprojetando resultados para WGS 84 (EPSG:4326)...")
@@ -1559,6 +1581,7 @@ def run_postprocessing(prob_map, transform, crs, talhao_geom=None, output_dir="d
         "shapefile": shp_path if not gdf_wgs84.empty else None,
         "topology_report": topology_report
     }
+    results["talhoes_geojson"] = fields_path
 
     if dominant_angle is not None:
         results["dominant_angle_deg"] = float(np.degrees(dominant_angle))

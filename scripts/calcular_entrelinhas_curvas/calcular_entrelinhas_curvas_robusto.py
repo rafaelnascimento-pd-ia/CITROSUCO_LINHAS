@@ -341,7 +341,9 @@ def load_lines(path):
     if gdf.empty:
         return gdf, []
 
-    exploded = gdf.explode(index_parts=False)
+    exploded = gdf.explode(index_parts=False).reset_index(drop=True)
+    exploded = exploded[exploded.geometry.notna() & ~exploded.geometry.is_empty &
+                        (exploded.geom_type == "LineString")].reset_index(drop=True)
     lines = []
     for geom in exploded.geometry:
         if geom is None or geom.is_empty:
@@ -350,7 +352,7 @@ def load_lines(path):
             lines.append(geom)
         elif geom.geom_type == "MultiLineString":
             lines.extend(part for part in geom.geoms if not part.is_empty)
-    return gdf, lines
+    return exploded, lines
 
 
 def main():
@@ -495,12 +497,14 @@ def main():
                 for idx, row in blocks.iterrows():
                     geom = row.geometry
                     if geom is not None and not geom.is_empty:
-                        blocks_to_process.append((f"Bloco {idx + 1}", geom))
+                        blocks_to_process.append((f"Bloco {idx + 1}", geom,
+                                                  str(row.get("parent_id", f"P{idx + 1:05d}")),
+                                                  str(row.get("field_id", f"P{idx + 1:05d}_001"))))
             except Exception as exc:
                 print(f"[WARN] Falha ao abrir o limite ({exc}); processamento global: {exc}")
 
     if not blocks_to_process:
-        blocks_to_process = [("Global", None)]
+        blocks_to_process = [("Global", None, "P00001", "P00001_001")]
 
     all_geometries = []
     all_attributes = {
@@ -513,13 +517,21 @@ def main():
         "source_a": [],
         "source_b": [],
         "segment_no": [],
+        "parent_id": [],
+        "field_id": [],
+        "row_a": [],
+        "row_b": [],
     }
 
-    for block_name, block_geom in blocks_to_process:
+    line_tree = STRtree(lines)
+    for block_name, block_geom, parent_id, field_id in blocks_to_process:
         if block_geom is None:
-            block_lines = lines
+            block_indices = list(range(len(lines)))
+        elif "field_id" in original_gdf.columns:
+            block_indices = np.flatnonzero(original_gdf["field_id"].astype(str).to_numpy() == field_id).tolist()
         else:
-            block_lines = [line for line in lines if line.intersects(block_geom)]
+            block_indices = sorted(line_tree.query(block_geom, predicate="intersects").tolist())
+        block_lines = [lines[i] for i in block_indices]
 
         print(f"\n--- Processando {block_name}: {len(block_lines)} fileiras/fragmentos ---")
         if len(block_lines) < 2:
@@ -668,18 +680,25 @@ def main():
                     output_line = extend_line_to_boundary(output_line, block_geom)
 
                 distances = np.array([item[2] for item in cleaned], dtype=float)
-                block_results.append(
-                    (
-                        output_line,
+                # Restrict derived geometry to its own field and exclusions.
+                restricted = output_line.intersection(block_geom) if block_geom is not None else output_line
+                output_parts = [restricted] if restricted.geom_type == "LineString" else [
+                    part for part in getattr(restricted, "geoms", []) if part.geom_type == "LineString"]
+                for output_part in output_parts:
+                    if output_part.length < args.min_segment_length:
+                        continue
+                    block_results.append(
+                      (
+                        output_part,
                         distances,
                         line1.length,
                         line2.length,
                         reference_line.length,
-                        idx1,
-                        idx2,
+                        block_indices[idx1],
+                        block_indices[idx2],
                         segment_no,
+                      )
                     )
-                )
 
         print(f"  Entrelinhas/trechos gerados: {len(block_results)}")
         for (
@@ -702,12 +721,15 @@ def main():
             all_attributes["source_a"].append(int(source_a))
             all_attributes["source_b"].append(int(source_b))
             all_attributes["segment_no"].append(int(segment_no))
+            all_attributes["parent_id"].append(parent_id)
+            all_attributes["field_id"].append(field_id)
+            all_attributes["row_a"].append(str(original_gdf.iloc[source_a].get("row_id", source_a)))
+            all_attributes["row_b"].append(str(original_gdf.iloc[source_b].get("row_id", source_b)))
 
     print("\n" + "=" * 76)
     print(f"[OK] Trechos de entrelinha gerados: {len(all_geometries)}")
     if not all_geometries:
         print("[WARN] Nenhum trecho foi gerado com os critérios informados.")
-        sys.exit(0)
 
     output_gdf = gpd.GeoDataFrame(all_attributes, geometry=all_geometries, crs=gdf_crs)
     output_gdf["length_m"] = output_gdf.geometry.length
@@ -735,7 +757,8 @@ def main():
 
     try:
         os.makedirs(shp_dir, exist_ok=True)
-        output_gdf.to_file(shp_out)
+        if not output_gdf.empty:
+            output_gdf.to_file(shp_out)
         print(f"[OK] Shapefile salvo: {shp_out}")
     except Exception as exc:
         print(f"[WARN] Falha ao salvar Shapefile: {exc}")
