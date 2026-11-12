@@ -18,4 +18,5 @@ close_size: 12
 open_size: 3
 skip_postprocess: false
 export_as_lines: true
+calc_entrelinhas: true
 min_row_spacing_m: 4.0

@@ -17,7 +17,7 @@ import argparse
 import numpy as np
 import geopandas as gpd
 import rasterio
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, MultiLineString
 from pyproj import CRS, Transformer
 
 def sanitize_filename(name):
@@ -62,6 +62,16 @@ def make_polygon_3d(poly, mdt_src):
         
     return Polygon(new_ext, new_ints)
 
+
+def make_bordadura_route(poly):
+    """Extrai o contorno externo 3D como MultiLineString para a rota."""
+    if poly is None or poly.is_empty or poly.geom_type != 'Polygon':
+        return None
+    coords = list(poly.exterior.coords)
+    if len(coords) < 2 or any(len(coord) < 3 for coord in coords):
+        return None
+    return MultiLineString([coords])
+
 def process_talhao(talhao_path, src_mdt, output_path, transformer, metric_crs, buffer_distance):
     """
     Processa o talhão: gera buffer, converte em 3D, e calcula atributos.
@@ -79,7 +89,7 @@ def process_talhao(talhao_path, src_mdt, output_path, transformer, metric_crs, b
     
     # 2. Aplicar buffer (padrão 7.0 metros)
     gdf_talhao_m['geometry'] = gdf_talhao_m.geometry.buffer(buffer_distance)
-    
+
     # Explodir para Single Part
     gdf_talhao_m = gdf_talhao_m.explode(index_parts=False)
     
@@ -173,8 +183,20 @@ def process_talhao(talhao_path, src_mdt, output_path, transformer, metric_crs, b
     # 5. Reprojetar para WGS84 e salvar
     gdf_out = gdf_talhao_proj.to_crs("EPSG:4326")
     gdf_out = gdf_out.explode(index_parts=False)
-    
-    gdf_out.to_file(output_path)
+    gdf_out.to_file(output_path, encoding="UTF-8")
+
+    # A rota acompanha o contorno externo do buffer, preservando as cotas Z
+    # amostradas no MDT e o CRS WGS84 do polígono de bordadura.
+    route_geometries = [make_bordadura_route(geom) for geom in gdf_talhao_proj.geometry]
+    route_rows = [geom for geom in route_geometries if geom is not None]
+    if route_rows:
+        route_gdf = gpd.GeoDataFrame(geometry=route_rows, crs=gdf_talhao_proj.crs).to_crs("EPSG:4326")
+        route_path = os.path.join(
+            os.path.dirname(output_path),
+            f"ROTA_BORDADURA_{os.path.basename(output_path).replace('BORDADURA_', '').rsplit('.', 1)[0]}.shp"
+        )
+        route_gdf.to_file(route_path, driver="ESRI Shapefile", encoding="UTF-8")
+        print(f"    [OK] Rota de bordadura salva: {os.path.basename(route_path)}")
 
 def main():
     parser = argparse.ArgumentParser(

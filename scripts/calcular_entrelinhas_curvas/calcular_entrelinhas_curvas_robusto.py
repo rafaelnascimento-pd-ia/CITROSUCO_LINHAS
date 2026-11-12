@@ -286,8 +286,14 @@ def choose_stable_candidate(candidates, previous_idx, previous_distance, max_spa
     return candidates[0] if candidates else None
 
 
-def split_contiguous_samples(samples, max_bridge_gap, max_midpoint_jump, min_points):
-    """Divide amostras em feições sem desenhar através de lacunas."""
+def split_contiguous_samples(
+    samples,
+    max_bridge_gap,
+    max_midpoint_jump,
+    min_points,
+    max_direction_angle=45.0,
+):
+    """Divide amostras quando há lacuna, salto ou mudança brusca de direção."""
     if not samples:
         return []
 
@@ -299,8 +305,25 @@ def split_contiguous_samples(samples, max_bridge_gap, max_midpoint_jump, min_poi
         previous = current[-1]
         reference_gap = item[0] - previous[0]
         midpoint_gap = previous[1].distance(item[1])
+        midpoint_vector = np.array(
+            [item[1].x - previous[1].x, item[1].y - previous[1].y],
+            dtype=float,
+        )
+        midpoint_length = np.linalg.norm(midpoint_vector)
+        expected_tangent = previous[3] + item[3]
+        tangent_length = np.linalg.norm(expected_tangent)
+        follows_reference = False
+        if midpoint_length > EPS and tangent_length > EPS:
+            direction_cosine = float(
+                np.dot(midpoint_vector / midpoint_length, expected_tangent / tangent_length)
+            )
+            follows_reference = direction_cosine >= np.cos(np.radians(max_direction_angle))
 
-        if reference_gap > max_bridge_gap or midpoint_gap > max_midpoint_jump:
+        if (
+            reference_gap > max_bridge_gap
+            or midpoint_gap > max_midpoint_jump
+            or not follows_reference
+        ):
             if len(current) >= min_points:
                 runs.append(current)
             current = [item]
@@ -366,7 +389,7 @@ def main():
         ),
     )
     parser.add_argument(
-        "--max_bridge_gap", type=float, default=3.0,
+        "--max_bridge_gap", type=float, default=0.75,
         help=(
             "Maior lacuna, em metros ao longo da referência, que pode ficar "
             "dentro da mesma entrelinha. Lacunas maiores geram feições separadas."
@@ -570,19 +593,25 @@ def main():
                     spacing_jump,
                 )
 
+                # Uma linha que aparece simultaneamente dos dois lados da
+                # normal não define um pareamento seguro nesta amostra.
+                if left is not None and right is not None and left[0] == right[0]:
+                    left = None
+                    right = None
+
                 if left is None:
                     previous_left_idx = None
                     previous_left_distance = None
                 else:
                     previous_left_idx = left[0]
                     previous_left_distance = left[2]
-                    pair_key = (min(anchor_idx, left[0]), max(anchor_idx, left[0]))
+                    pair_key = (min(anchor_idx, left[0]), max(anchor_idx, left[0]), "left")
                     midpoint = Point(
                         (anchor_point.x + left[1].x) / 2.0,
                         (anchor_point.y + left[1].y) / 2.0,
                     )
                     pair_data.setdefault(pair_key, []).append(
-                        (float(anchor_distance), midpoint, float(left[2]))
+                        (float(anchor_distance), midpoint, float(left[2]), anchor_tangent.copy())
                     )
 
                 if right is None:
@@ -591,18 +620,18 @@ def main():
                 else:
                     previous_right_idx = right[0]
                     previous_right_distance = right[2]
-                    pair_key = (min(anchor_idx, right[0]), max(anchor_idx, right[0]))
+                    pair_key = (min(anchor_idx, right[0]), max(anchor_idx, right[0]), "right")
                     midpoint = Point(
                         (anchor_point.x + right[1].x) / 2.0,
                         (anchor_point.y + right[1].y) / 2.0,
                     )
                     pair_data.setdefault(pair_key, []).append(
-                        (float(anchor_distance), midpoint, float(right[2]))
+                        (float(anchor_distance), midpoint, float(right[2]), anchor_tangent.copy())
                     )
 
         block_results = []
         for pair_key, samples in pair_data.items():
-            idx1, idx2 = pair_key
+            idx1, idx2 = pair_key[:2]
             line1 = block_lines[idx1]
             line2 = block_lines[idx2]
             reference_idx = idx1 if line1.length >= line2.length else idx2
@@ -614,7 +643,7 @@ def main():
             runs = split_contiguous_samples(
                 samples,
                 max_bridge_gap=args.max_bridge_gap,
-                max_midpoint_jump=max(args.max_row_spacing * 2.0, args.max_bridge_gap * 2.0),
+                max_midpoint_jump=max(args.sample_step * 3.0, args.max_row_spacing * 0.5),
                 min_points=args.min_points_per_segment,
             )
 
