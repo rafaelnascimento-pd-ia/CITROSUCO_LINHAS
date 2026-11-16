@@ -62,6 +62,7 @@ function initUI() {
     setupUpload("#upload-talhao", "#input-file-talhao", "talhao", "#filename-talhao");
     setupUpload("#upload-linhas", "#input-file-linhas", "linhas", "#filename-linhas");
     setupUpload("#upload-path-linhas", "#input-file-path-linhas", "path_linhas", "#filename-path-linhas");
+    setupUpload("#upload-area-restrita", "#input-file-area-restrita", "area_restrita", "#filename-area-restrita");
     setupUpload("#upload-checkpoint", "#input-file-checkpoint", "checkpoint", "#filename-checkpoint");
     setupUpload("#upload-mask", "#input-file-mask", "mask", "#filename-mask");
 
@@ -107,14 +108,17 @@ function setupUpload(zoneSelector, inputSelector, type, labelSelector) {
     zone.addEventListener("click", () => input.click());
     input.addEventListener("change", () => {
         if (input.files.length > 0) {
-            uploadFile(input.files[0], type, label);
+            uploadFile(input.files[0], type, label, Array.from(input.files));
         }
     });
 }
 
-function uploadFile(file, type, label) {
+function uploadFile(file, type, label, files = [file]) {
     const formData = new FormData();
     formData.append('file', file);
+    if (type === 'area_restrita' && files.length > 1) {
+        files.forEach(item => formData.append('files', item));
+    }
     let endpoint = '/api/upload';
     if (type === 'checkpoint') endpoint = '/api/upload-checkpoint';
     if (type === 'mask') endpoint = '/api/upload-mask';
@@ -127,6 +131,11 @@ function uploadFile(file, type, label) {
             if (data.status === 'success') {
                 label.textContent = `Salvo: ${file.name}`;
                 label.style.color = '#33cc33';
+                if (type === 'area_restrita') {
+                    const download = $('#download-area-restrita');
+                    download.href = '/api/download/vector/area_restrita_shapefile';
+                    download.style.display = 'inline-block';
+                }
             } else {
                 label.textContent = `Erro: ${data.error || 'Falha'}`;
                 label.style.color = '#ff3333';

@@ -1,15 +1,17 @@
-# Fluxo completo para o dataset 68093 (curvas).
+# Fluxo completo para o dataset 86508 (curvas).
 # Uso: python main.py resultado --config configs/resultado.yaml
 
-gpkg_path: inferencia/68093/68093.gpkg
-talhao_path: inferencia/68093/68093.geojson
+gpkg_path: inferencia/86508/86508.gpkg
+talhao_path: inferencia/86508/shape (1).geojson
+# Opcional: caminho do GeoJSON ou SHP (com .shx/.dbf/.prj) da área restrita.
+area_restrita_path: null
 
 data_dir: data
 models_dir: models
-checkpoint_path: models/best_model_20260901_203143_9orthos.pth
-output_dir: inferencia_teste_rafael_1/68093/resultado
-lines_output_name: LINHAS_68093
-route_output_name: ROTA_BORDADURA_68093
+checkpoint_path: models/best_model_20260903_184958_9orthos.pth
+output_dir: inferencia/86508/resultado
+lines_output_name: LINHAS_86508
+route_output_name: ROTA_BORDADURA_86508
 max_line_vertices: 80
 line_simplify_tolerance_m: 0.1
 route_smoothing_radius_m: 0.5
@@ -31,6 +33,7 @@ calc_entrelinhas: true
 min_row_spacing_m: 4.0
 max_row_spacing_m: 8.5
 
+
 # Separação espacial por orientação local. 0° e 180° são equivalentes.
 # 20° reutiliza a escala angular do paralelismo já adotada na deduplicação.
 # As distâncias são derivadas do espaçamento medido entre fileiras.
@@ -45,4 +48,4 @@ field_partition:
 
 # MDT informado para a geração da bordadura.
 mdt_path: Gerar_bordadura/MDT.tif
-bordadura_buffer_distance: 7.0
+bordadura_buffer_distance: 4.0

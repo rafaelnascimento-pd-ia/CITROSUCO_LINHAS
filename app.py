@@ -12,6 +12,7 @@ import rasterio
 import rasterio.warp
 import geopandas as gpd
 import torch
+from shapely.geometry import Polygon, MultiPolygon
 
 # Adjust path to import src modules
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
@@ -88,6 +89,54 @@ def load_prob_map_from_tif(path):
         if prob_map.max() > 1.0:
             prob_map = prob_map / 255.0
         return prob_map, src.transform, src.crs
+
+
+def export_restricted_area():
+    """Normalize uploaded restricted polygons to a faithful 3D UTM shapefile."""
+    source_path = next((p for p in [
+        os.path.join(UPLOAD_FOLDER, "area_restrita.geojson"),
+        os.path.join(UPLOAD_FOLDER, "area_restrita.shp"),
+    ] if os.path.isfile(p)), None)
+    if not source_path:
+        raise ValueError("Área restrita não encontrada.")
+
+    gdf = gpd.read_file(source_path)
+    if gdf.empty or gdf.crs is None:
+        raise ValueError("Área restrita vazia ou sem sistema de coordenadas definido.")
+    # Select the UTM zone from the actual footprint, in geographic coordinates.
+    geographic = gdf.to_crs("EPSG:4326")
+    center = geographic.unary_union.centroid
+    zone = max(1, min(60, int((center.x + 180) // 6) + 1))
+    epsg = (32600 if center.y >= 0 else 32700) + zone
+    projected = gdf.to_crs(epsg=epsg)
+
+    polygons = []
+    for geom in projected.geometry:
+        if geom is None or geom.is_empty:
+            continue
+        candidates = list(geom.geoms) if geom.geom_type == "MultiPolygon" else [geom]
+        for polygon in candidates:
+            if polygon.geom_type != "Polygon":
+                continue
+            # Add a zero Z only when the source has no elevation; preserve existing Z values.
+            if not getattr(polygon, "has_z", False):
+                exterior = [(x, y, 0.0) for x, y, *_ in polygon.exterior.coords]
+                interiors = [[(x, y, 0.0) for x, y, *_ in ring.coords]
+                             for ring in polygon.interiors]
+                polygon = Polygon(exterior, interiors)
+            polygons.append(polygon)
+    if not polygons:
+        raise ValueError("O arquivo precisa conter geometrias Polygon ou MultiPolygon.")
+
+    output_dir = os.path.join(OUTPUT_FOLDER, "area_restrita")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, "AREA_RESTRITA.shp")
+    out = gpd.GeoDataFrame({"id": range(1, len(polygons) + 1)},
+                           geometry=[MultiPolygon([p]) for p in polygons], crs=f"EPSG:{epsg}")
+    out.to_file(output_path, driver="ESRI Shapefile", encoding="UTF-8", index=False)
+    with open(os.path.splitext(output_path)[0] + ".cpg", "w", encoding="ascii") as cpg:
+        cpg.write("UTF-8")
+    return output_path
 
 # Clean up raster handles on exit
 import atexit
@@ -234,8 +283,8 @@ def upload_files():
     Handles upload of talhao (boundary) and linhas_centrais (centerlines) vectors.
     Supports .geojson or zipped shapefiles.
     """
-    if 'file' not in request.files or 'type' not in request.form:
-        return jsonify({"error": "Parâmetros inválidos. Envie 'file' e 'type' ('talhao', 'linhas' ou 'path_linhas')."}), 400
+    if ('file' not in request.files and 'files' not in request.files) or 'type' not in request.form:
+        return jsonify({"error": "Parâmetros inválidos. Envie o arquivo e o tipo do vetor."}), 400
         
     file = request.files['file']
     vector_type = request.form['type']
@@ -243,8 +292,8 @@ def upload_files():
     if file.filename == '':
         return jsonify({"error": "Nome de arquivo vazio!"}), 400
         
-    if vector_type not in ["talhao", "linhas", "path_linhas"]:
-        return jsonify({"error": "Tipo de vetor inválido! Use 'talhao', 'linhas' ou 'path_linhas'."}), 400
+    if vector_type not in ["talhao", "linhas", "path_linhas", "area_restrita"]:
+        return jsonify({"error": "Tipo de vetor inválido!"}), 400
         
     filename = file.filename.lower()
     
@@ -253,8 +302,10 @@ def upload_files():
         prefix = "talhao"
     elif vector_type == "linhas":
         prefix = "linhas_centrais"
-    else:
+    elif vector_type == "path_linhas":
         prefix = "path_linhas"
+    else:
+        prefix = "area_restrita"
     
     try:
         # Clear previous files of this type
@@ -269,7 +320,21 @@ def upload_files():
             file.save(dest_path)
             # Verify file structure
             gpd.read_file(dest_path)
+            if vector_type == "area_restrita":
+                export_restricted_area()
             return jsonify({"status": "success", "message": f"Vetor '{vector_type}' salvo com sucesso como GeoJSON."})
+
+        elif vector_type == "area_restrita" and any(
+                os.path.splitext(upload.filename)[1].lower() == '.shp'
+                for upload in (request.files.getlist('files') or [file])):
+            uploaded_files = request.files.getlist('files') or [file]
+            for uploaded in uploaded_files:
+                ext = os.path.splitext(uploaded.filename)[1].lower()
+                if ext in ['.shp', '.shx', '.dbf', '.prj', '.cpg']:
+                    uploaded.save(os.path.join(UPLOAD_FOLDER, f"{prefix}{ext}"))
+            gpd.read_file(os.path.join(UPLOAD_FOLDER, f"{prefix}.shp"))
+            export_restricted_area()
+            return jsonify({"status": "success", "message": "Área restrita exportada como Shapefile MultiPolygonZ em UTM."})
             
         elif filename.endswith('.zip'):
             # Unzip and look for shapefiles
@@ -306,6 +371,8 @@ def upload_files():
             
             # Verify shapefile
             gpd.read_file(os.path.join(UPLOAD_FOLDER, f"{prefix}.shp"))
+            if vector_type == "area_restrita":
+                export_restricted_area()
             return jsonify({"status": "success", "message": f"Shapefile '{vector_type}' descompactado e salvo com sucesso."})
             
         else:
@@ -898,6 +965,21 @@ def download_talhoes_shapefile():
                 bundle.write(os.path.join(directory, filename), filename)
     archive.seek(0)
     return send_file(archive, as_attachment=True, download_name="talhoes_separados.zip")
+
+
+@app.route('/api/download/vector/area_restrita_shapefile')
+def download_area_restrita_shapefile():
+    import io
+    directory = os.path.join(OUTPUT_FOLDER, "area_restrita")
+    if not os.path.isfile(os.path.join(directory, "AREA_RESTRITA.shp")):
+        return "Área restrita ainda não disponível", 404
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as bundle:
+        for filename in sorted(os.listdir(directory)):
+            if os.path.splitext(filename)[0] == 'AREA_RESTRITA':
+                bundle.write(os.path.join(directory, filename), filename)
+    archive.seek(0)
+    return send_file(archive, as_attachment=True, download_name="area_restrita_utm_shapefile.zip")
 
 
 # --- Checkpoint Management ---

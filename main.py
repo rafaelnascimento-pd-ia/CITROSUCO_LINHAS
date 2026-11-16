@@ -114,7 +114,46 @@ def normalize_config_paths(cfg, base_dir=None):
     cfg['data_dir'] = normalize_path(cfg.get('data_dir'), base_dir)
     cfg['models_dir'] = normalize_path(cfg.get('models_dir'), base_dir)
     cfg['output_dir'] = normalize_path(cfg.get('output_dir'), base_dir)
+    cfg['area_restrita_path'] = normalize_path(cfg.get('area_restrita_path'), base_dir)
     return cfg
+
+
+def export_restricted_area_shapefile(input_path, output_dir):
+    """Export polygon restrictions as a 3D MultiPolygon Shapefile in local UTM."""
+    gdf = gpd.read_file(input_path)
+    if gdf.empty or gdf.crs is None:
+        raise ValueError('Área restrita vazia ou sem CRS definido.')
+    geographic = gdf.to_crs('EPSG:4326')
+    center = geographic.geometry.unary_union.centroid
+    zone = max(1, min(60, int((center.x + 180) // 6) + 1))
+    epsg = (32600 if center.y >= 0 else 32700) + zone
+    projected = gdf.to_crs(epsg=epsg)
+
+    polygons = []
+    for geom in projected.geometry:
+        if geom is None or geom.is_empty:
+            continue
+        candidates = list(geom.geoms) if geom.geom_type == 'MultiPolygon' else [geom]
+        for polygon in candidates:
+            if polygon.geom_type != 'Polygon':
+                continue
+            if not getattr(polygon, 'has_z', False):
+                exterior = [(x, y, 0.0) for x, y, *_ in polygon.exterior.coords]
+                interiors = [[(x, y, 0.0) for x, y, *_ in ring.coords]
+                             for ring in polygon.interiors]
+                polygon = Polygon(exterior, interiors)
+            polygons.append(MultiPolygon([polygon]))
+    if not polygons:
+        raise ValueError('Área restrita precisa conter geometrias Polygon ou MultiPolygon.')
+
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, 'AREA_RESTRITA.shp')
+    output = gpd.GeoDataFrame(
+        {'id': range(1, len(polygons) + 1)}, geometry=polygons, crs=f'EPSG:{epsg}')
+    output.to_file(output_path, driver='ESRI Shapefile', encoding='UTF-8', index=False)
+    with open(os.path.splitext(output_path)[0] + '.cpg', 'w', encoding='ascii') as cpg:
+        cpg.write('UTF-8')
+    return output_path
 
 
 def generate_interrows(
@@ -831,6 +870,16 @@ def resultado_command(cfg, base_dir=None):
                  ('.shp', '.shx', '.dbf', '.prj', '.cpg', '.qix', '.sbn', '.sbx'))
                     or filename.lower() == 'talhoes_separados.shp.xml'):
                 os.remove(os.path.join(final_output_dir, filename))
+
+        restricted_path = cfg.get('area_restrita_path')
+        if restricted_path:
+            if not os.path.isfile(restricted_path):
+                raise FileNotFoundError(f'Área restrita não encontrada: {restricted_path}')
+            restricted_shp = export_restricted_area_shapefile(restricted_path, final_output_dir)
+            restricted_stem = os.path.splitext(os.path.basename(restricted_shp))[0]
+            copied.update(os.path.join(final_output_dir, name)
+                          for name in os.listdir(final_output_dir)
+                          if os.path.splitext(name)[0] == restricted_stem)
 
     print(f'Fluxo resultado concluído. {len(copied)} arquivo(s) Shapefile e auxiliares em: {final_output_dir}')
 

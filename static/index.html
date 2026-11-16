@@ -79,6 +79,12 @@
                         <span class="upload-filename" id="filename-path-linhas">Nenhum arquivo selecionado</span>
                         <input type="file" id="input-file-path-linhas" accept=".geojson,.zip" style="display:none">
                     </div>
+                    <div class="upload-zone" id="upload-area-restrita" style="cursor: pointer;">
+                        <h4>Área restrita</h4>
+                        <span class="upload-filename" id="filename-area-restrita">Envie GeoJSON, ZIP ou SHP com seus arquivos auxiliares</span>
+                        <input type="file" id="input-file-area-restrita" accept=".geojson,.zip,.shp,.shx,.dbf,.prj,.cpg" multiple style="display:none">
+                        <a id="download-area-restrita" href="#" style="display:none; margin-top:8px;" onclick="event.stopPropagation()">Baixar Shapefile MultiPolygonZ (UTM, UTF-8)</a>
+                    </div>
                     <div class="upload-zone" id="upload-checkpoint" style="cursor: pointer;">
                         <h4>Checkpoint (.pth)</h4>
                         <span class="upload-filename" id="filename-checkpoint">Nenhum arquivo selecionado</span>
